@@ -6,9 +6,10 @@ type ProgressProps = {
   label: string;
   className?: string;
   indicatorClassName?: string;
+  indicatorTransitionClassName?: string;
 };
 
-export function Progress({ value, label, className, indicatorClassName }: ProgressProps) {
+export function Progress({ value, label, className, indicatorClassName, indicatorTransitionClassName }: ProgressProps) {
   const indeterminate = value === undefined;
   const progress = indeterminate ? 0 : Math.min(100, Math.max(0, value));
 
@@ -25,7 +26,9 @@ export function Progress({ value, label, className, indicatorClassName }: Progre
       <div
         className={cn(
           "h-full rounded-full bg-primary",
-          indeterminate ? "w-2/5 animate-indeterminate" : "transition-[width] duration-200",
+          indeterminate
+            ? "w-2/5 animate-indeterminate"
+            : indicatorTransitionClassName ?? "transition-[width] duration-200",
           indicatorClassName,
         )}
         style={indeterminate ? undefined : { width: `${progress}%` }}

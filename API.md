@@ -15,8 +15,11 @@ Lists all document metadata, newest first.
       "id": "<mongo-object-id>",
       "fileName": "notes.pdf",
       "fileSize": 12345,
+      "fileType": "pdf",
       "status": "completed",
       "pageCount": 4,
+      "sourceType": "page",
+      "sourceCount": 4,
       "chunkCount": 8,
       "createdAt": "2026-01-01T00:00:00.000Z"
     }
@@ -24,26 +27,35 @@ Lists all document metadata, newest first.
 }
 ```
 
-`status` is `processing`, `completed`, or `failed`. Failed entries may include a safe `errorMessage`.
+`status` is `processing`, `completed`, `failed`, or `cancelled`. Failed/cancelled entries may include a safe `errorMessage`.
 
 **Errors:** `500 { "error": "Could not load your documents." }`.
 
 ## `POST /api/upload`
 
-Accepts `multipart/form-data`, field `file`. Maximum 10 MB; nonempty `.pdf` filename and `%PDF-` signature required. The client may report byte transfer progress, but server-side extraction/indexing is part of this same request and has no known percentage.
+Accepts PDF (`.pdf`), Word (`.docx`, `.doc`), PowerPoint (`.pptx`, `.ppt`), plain text (`.txt`), and Markdown (`.md`) files. Browser uploads use a raw body with the filename in `X-File-Name` and the file MIME type in `Content-Type`; existing clients may send `multipart/form-data`, field `file`. Maximum 10 MB. The server validates extension, MIME type, nonempty content, PDF/Office signatures, and UTF-8 for text files. ZIP-backed DOCX/PPTX archives are also validated by their format parser.
 
-**Success `201`**
+After validation and creation of the MongoDB document, the endpoint streams newline-delimited JSON events with content type `application/x-ndjson` and HTTP status `200`. Progress events include an overall server-processing percentage and stage (`extracting`, `chunking`, `embedding-indexing`, or `saving`). Pinecone uses integrated embedding, so embedding and vector indexing progress is reported together as successfully upserted chunks. The final `complete` event reports 100% only after the completed MongoDB record is saved. Early validation/database errors remain ordinary JSON error responses; processing errors are streamed as `error` events.
+
+**Final `complete` event**
 
 ```json
 {
-  "documentId": "<mongo-object-id>",
-  "fileName": "notes.pdf",
-  "chunkCount": 8,
-  "status": "completed"
+  "type": "complete",
+  "progress": 100,
+  "body": {
+    "documentId": "<mongo-object-id>",
+    "fileName": "notes.pdf",
+    "fileType": "pdf",
+    "sourceType": "page",
+    "sourceCount": 4,
+    "chunkCount": 8,
+    "status": "completed"
+  }
 }
 ```
 
-**Errors:** `400` invalid/missing upload; `422` no extractable text; `500` database, Pinecone, or processing failure. Error response shape: `{ "error": "Human-readable message" }`. The endpoint records a failed Mongo document after it creates one. Cleanup of partial Pinecone writes is best-effort.
+**Errors:** `400` invalid/missing upload; `422` no extractable text; `500` database, Pinecone, or processing failure. Early error response shape: `{ "error": "Human-readable message" }`; streamed error events carry the same body shape. A cancelled request aborts an in-flight Pinecone batch when possible, records a cancelled MongoDB document, and attempts cleanup of partial writes.
 
 ## `POST /api/chat`
 
@@ -59,7 +71,7 @@ Accepts JSON. `documentId` must be a valid Mongo ObjectId. `question` is trimmed
 }
 ```
 
-**Success `200`:** UTF-8 `text/plain` streamed answer. Headers include `Cache-Control: no-store` and `X-Sources: [1,2]` (JSON array of source page numbers). If the context does not contain an answer, the model returns the configured refusal sentence and the client hides source badges.
+**Success `200`:** UTF-8 `text/plain` streamed answer. Headers include `Cache-Control: no-store` and `X-Sources`, a JSON array of source objects such as `[{"type":"page","number":1},{"type":"slide","number":3},{"type":"document"}]`. The client also accepts the older numeric page array for compatibility. If the context does not contain an answer, the model returns the configured refusal sentence and the client hides source badges.
 
 **Errors:** `400` invalid request; `404` document not found; `409` document is not completed; `503` no indexed chunks were returned; `500` retrieval/model/stream setup failure. Error response shape is `{ "error": "Could not answer that question. Try again." }` or a specific validation/status message.
 

@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "RAG Document Chat",
-  description: "Upload a PDF and ask questions about it. Answers show the pages they came from.",
+  description: "Upload a document and ask questions about it. Answers show the pages or slides they came from.",
 };
 
 // Runs before first paint so the saved theme never flashes

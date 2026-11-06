@@ -1,6 +1,7 @@
 import { RETRIEVAL_TOP_K } from "@/lib/constants";
 import { requireEnv } from "@/lib/env";
 import type { TextChunk } from "@/lib/types";
+import type { SourceType } from "@/lib/document-formats";
 
 const PINECONE_API_VERSION = "2026-07";
 const PINECONE_EMBED_BATCH_SIZE = 96;
@@ -8,9 +9,11 @@ const PINECONE_EMBED_BATCH_SIZE = 96;
 type PineconeIndexDescription = { host?: string };
 type PineconeErrorBody = { error?: { message?: string }; message?: string };
 type SearchHit = {
-  fields?: { chunk_text?: unknown; pageNumber?: unknown };
+  fields?: { chunk_text?: unknown; pageNumber?: unknown; sourceType?: unknown; sourceNumber?: unknown };
   chunk_text?: unknown;
   pageNumber?: unknown;
+  sourceType?: unknown;
+  sourceNumber?: unknown;
 };
 type SearchResponse = { matches?: SearchHit[] };
 
@@ -42,7 +45,12 @@ async function getIndexHost(): Promise<string> {
   return indexHostPromise;
 }
 
-async function documentsRequest<T>(namespace: string, operation: "upsert" | "search" | "delete", body: unknown): Promise<T> {
+async function documentsRequest<T>(
+  namespace: string,
+  operation: "upsert" | "search" | "delete",
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   const host = await getIndexHost();
   const response = await fetch(
     `https://${host}/namespaces/${encodeURIComponent(namespace)}/documents/${operation}`,
@@ -56,6 +64,7 @@ async function documentsRequest<T>(namespace: string, operation: "upsert" | "sea
       },
       body: JSON.stringify(body),
       cache: "no-store",
+      signal,
     },
   );
 
@@ -69,28 +78,40 @@ async function documentsRequest<T>(namespace: string, operation: "upsert" | "sea
 }
 
 /** This index's chunk_text field uses Pinecone integrated embedding (llama-text-embed-v2). */
-export async function storeChunks(documentId: string, fileName: string, chunks: TextChunk[]): Promise<void> {
+export async function storeChunks(
+  documentId: string,
+  fileName: string,
+  chunks: TextChunk[],
+  onBatchStored?: (completedChunks: number, totalChunks: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  let completedChunks = 0;
   for (let start = 0; start < chunks.length; start += PINECONE_EMBED_BATCH_SIZE) {
+    signal?.throwIfAborted();
     const documents = chunks.slice(start, start + PINECONE_EMBED_BATCH_SIZE).map((chunk) => ({
       _id: `${documentId}-${chunk.chunkIndex}`,
       chunk_text: chunk.text,
       title: fileName,
       documentId,
-      pageNumber: chunk.pageNumber,
+      pageNumber: chunk.pageNumber ?? chunk.sourceNumber ?? 0,
+      sourceType: chunk.sourceType,
+      sourceNumber: chunk.sourceNumber,
       chunkIndex: chunk.chunkIndex,
     }));
 
-    await documentsRequest(documentId, "upsert", { documents });
+    await documentsRequest(documentId, "upsert", { documents }, signal);
+    completedChunks += documents.length;
+    onBatchStored?.(completedChunks, chunks.length);
   }
 }
 
-export type RetrievedChunk = { pageNumber: number; text: string };
+export type RetrievedChunk = { sourceType: SourceType; sourceNumber?: number; pageNumber?: number; text: string };
 
 export async function searchChunks(documentId: string, question: string): Promise<RetrievedChunk[]> {
   const result = await documentsRequest<SearchResponse>(documentId, "search", {
     score_by: [{ type: "embed", fields: ["chunk_text"], query: question }],
     top_k: RETRIEVAL_TOP_K,
-    include_fields: ["chunk_text", "pageNumber"],
+    include_fields: ["chunk_text", "pageNumber", "sourceType", "sourceNumber"],
   });
 
   return (result.matches ?? []).flatMap((match) => {
@@ -98,8 +119,12 @@ export async function searchChunks(documentId: string, question: string): Promis
     // so the parser remains compatible with the Records API hit shape.
     const fields = match.fields ?? match;
     const text = typeof fields.chunk_text === "string" ? fields.chunk_text : "";
-    const pageNumber = typeof fields.pageNumber === "number" ? fields.pageNumber : 1;
-    return text ? [{ pageNumber, text }] : [];
+    const pageNumber = typeof fields.pageNumber === "number" ? fields.pageNumber : undefined;
+    const sourceType = fields.sourceType === "slide" || fields.sourceType === "document" || fields.sourceType === "page"
+      ? fields.sourceType
+      : "page";
+    const sourceNumber = typeof fields.sourceNumber === "number" ? fields.sourceNumber : pageNumber;
+    return text ? [{ sourceType, sourceNumber, pageNumber, text }] : [];
   });
 }
 

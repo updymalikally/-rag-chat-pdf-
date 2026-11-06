@@ -27,9 +27,9 @@ export default async function HomePage() {
             <h2 className="text-sm font-semibold">How it works</h2>
             <ol className="mt-4 flex flex-col gap-4">
               {[
-                { icon: Upload, title: "Upload document", description: "PDF, up to 10 MB" },
+                { icon: Upload, title: "Upload document", description: "PDF, Word, PowerPoint, TXT, or Markdown · up to 10 MB" },
                 { icon: Sparkles, title: "AI processing", description: "Text is split into searchable chunks" },
-                { icon: MessageSquare, title: "Open the chat", description: "Ask questions with page references" },
+                { icon: MessageSquare, title: "Open the chat", description: "Ask questions with page or slide references" },
               ].map(({ icon: Icon, title, description }, index) => (
                 <li key={title} className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
@@ -69,7 +69,7 @@ export default async function HomePage() {
                 ) : (
                   <>
                     <p className="text-[13px] font-medium">How to start chatting</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Upload and finish processing a PDF to ask questions.</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Upload and finish processing a document to ask questions.</p>
                   </>
                 )}
               </div>

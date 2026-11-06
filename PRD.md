@@ -2,40 +2,40 @@
 
 ## Product
 
-**RAG Document Chat** is a web app for uploading text-based PDFs and asking questions grounded in their contents. Answers include page references so a reader can check the source.
+**RAG Document Chat** is a web app for uploading PDF, Word, PowerPoint, text, and Markdown files and asking questions grounded in their contents. Answers include page, slide, or document references so a reader can check the source.
 
 ## Problem and value
 
-Readers often need to locate facts across a PDF without scanning every page. The product extracts and indexes PDF text, retrieves relevant passages for a question, and presents a concise answer with source pages.
+Readers often need to locate facts across a document without scanning every page or slide. The product extracts and indexes text, retrieves relevant passages for a question, and presents a concise answer with source references.
 
 ## Target users
 
 - Students and researchers working with course notes, papers, and reports.
-- Anyone who needs to ask questions about a text-based PDF.
+- Anyone who needs to ask questions about a supported document.
 
 The current implementation has no accounts or per-user ownership. **Assumption:** the MVP is a single-user/local demonstration. A public multi-user deployment requires an approved authentication and data ownership design before launch.
 
 ## Core journeys and stories
 
-1. **Upload:** As a reader, I choose or drop a PDF, see transfer progress and processing status, and learn whether it is ready or why processing failed.
-2. **Browse:** As a reader, I see uploaded documents, their status, size, and page count, and can open a completed document's chat.
-3. **Ask:** As a reader, I ask a question about one completed PDF, see a streamed answer based only on retrieved text, and see the source pages.
+1. **Upload:** As a reader, I choose or drop a supported document, see transfer progress and processing status, and learn whether it is ready or why processing failed.
+2. **Browse:** As a reader, I see uploaded documents, their format, status, size, and source count, and can open a completed document's chat.
+3. **Ask:** As a reader, I ask a question about one completed document, see a streamed answer based only on retrieved text, and see its source references.
 4. **Recover:** As a reader, I can correct an invalid upload or retry after a service error without mistaking failure for a successful answer.
 
 ## Functional requirements
 
-- Accept PDF files up to 10 MB. Reject empty, non-PDF, oversized, and textless/scanned documents with an understandable message.
-- Extract page text, split it into overlapping chunks, and index chunks in a namespace dedicated to the document.
-- Record document metadata and processing status in MongoDB. Expose completed, processing, and failed states.
-- Show an upload progress bar while transferring; show an indeterminate processing state while extraction/indexing runs.
+- Accept PDF, DOCX, DOC, PPTX, PPT, TXT, and Markdown files up to 10 MB. Reject empty, unsupported, oversized, malformed, and textless documents with an understandable message.
+- Extract PDF pages and presentation slides as individual sources; preserve document-level references for Word, text, and Markdown. Split all formats into overlapping chunks and index chunks in a namespace dedicated to the document.
+- Record document metadata and processing status in MongoDB. Expose completed, processing, failed, and cancelled states.
+- Show weighted progress from actual upload bytes and backend stage updates; reach 100% only after indexing and the completed database record are saved.
 - List documents newest first. Only completed documents can open chat.
-- Validate question length (1–2,000 characters), document ID, and supplied chat history. Stream answers and include source page numbers.
+- Validate question length (1–2,000 characters), document ID, and supplied chat history. Stream answers and include page, slide, or document citations.
 - The assistant must use retrieved document context only. If context does not answer the question, it must clearly say it could not find the answer in that document.
 - Never send provider credentials to the browser.
 
 ## Pages and screens
 
-- **Home (`/`)**: brand header, PDF upload/drop area, upload status, document list, quick start/help panels.
+- **Home (`/`)**: brand header, supported document upload/drop area, upload status, document list, quick start/help panels.
 - **Document chat (`/chat/[documentId]`)**: document header and metadata, conversation, source page badges, question composer, theme control.
 - **API routes**: `/api/documents`, `/api/upload`, `/api/chat` (specified in `API.md`).
 
@@ -46,11 +46,11 @@ The current app has no authentication, roles, or authorization boundary. All use
 ## Data and integrations
 
 - MongoDB stores document metadata, counts, lifecycle status, timestamps, and a safe processing error message.
-- Pinecone Documents API stores text chunks and page/chunk metadata in a namespace keyed by MongoDB document ID.
-- LangChain PDFLoader and text splitters extract and chunk pages.
+- Pinecone Documents API stores text chunks and source/chunk metadata in a namespace keyed by MongoDB document ID.
+- Format-specific loaders extract content; a shared text splitter prepares searchable chunks.
 - OpenRouter provides the configured chat model (`openai/gpt-4o-mini`).
 - Required environment variables: `MONGODB_URI`, `PINECONE_API_KEY`, `PINECONE_INDEX`, `OPENROUTER_API_KEY`.
-- Original PDF binaries are not persistently stored by this app.
+- Original document binaries are not persistently stored by this app.
 
 ## States and error handling
 
@@ -63,14 +63,14 @@ The current app has no authentication, roles, or authorization boundary. All use
 
 - Keep all database and provider calls on the server.
 - Validate external input at API boundaries and avoid returning raw provider errors or secrets.
-- Stream chat responses; keep answers concise and traceable to page numbers.
+- Stream chat responses; keep answers concise and traceable to page, slide, or document sources.
 - Support small screens, keyboard use, screen readers, dark mode, and reduced-motion preferences.
 - Keep the MVP understandable and maintainable; avoid adding infrastructure until usage requires it.
 - Upload/chat routes currently have a 60-second maximum duration. Document this deployment constraint.
 
 ## MVP scope
 
-PDF upload, text extraction and chunking, Pinecone indexing/retrieval, document listing/status, grounded streamed chat with page citations, and responsive light/dark UI.
+Multi-format document upload, text extraction and chunking, Pinecone indexing/retrieval, document listing/status, grounded streamed chat with source citations, and responsive light/dark UI.
 
 ## Out of scope
 
@@ -78,8 +78,8 @@ Scanned-PDF OCR, accounts and collaboration, document deletion/retention control
 
 ## Success criteria
 
-- Valid text PDFs under 10 MB upload and reach a terminal completed or failed state.
-- A completed document is searchable and answers supported questions using its retrieved content with page references.
+- Valid supported documents under 10 MB upload and reach a terminal completed or failed state.
+- A completed document is searchable and answers supported questions using its retrieved content with page, slide, or document references.
 - Unanswerable questions are explicitly identified; service failures are shown as service failures.
 - Invalid uploads and missing integrations produce useful errors without exposing secrets.
 - Core upload and chat journeys work at desktop and mobile widths and are keyboard-accessible.

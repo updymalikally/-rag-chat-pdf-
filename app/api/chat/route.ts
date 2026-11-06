@@ -4,27 +4,38 @@ import { NOT_FOUND_MESSAGE } from "@/lib/constants";
 import { getDocument } from "@/lib/documents";
 import { getChatModel } from "@/lib/embeddings";
 import { searchChunks, type RetrievedChunk } from "@/lib/pinecone";
+import type { SourceType } from "@/lib/document-formats";
 import { chatRequestSchema } from "@/lib/validations";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `You answer questions about one PDF document, using only the context excerpts you are given.
-Each excerpt starts with its page number.
+const SYSTEM_PROMPT = `You answer questions about one document, using only the context excerpts you are given.
+Each excerpt starts with a source label, such as a page or slide number, or the document name.
 If the answer is not in the context, reply with exactly: ${NOT_FOUND_MESSAGE}
 Never use outside knowledge. Keep answers clear and concise.
-Do not mention page numbers in your answer; the interface shows them.`;
+Do not mention source labels in your answer; the interface shows them.`;
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
 function buildContext(chunks: RetrievedChunk[]): string {
-  return chunks.map((chunk) => `[Page ${chunk.pageNumber}]\n${chunk.text}`).join("\n\n---\n\n");
+  return chunks.map((chunk) => `[${sourceLabel(chunk.sourceType, chunk.sourceNumber)}]\n${chunk.text}`).join("\n\n---\n\n");
 }
 
-function uniquePages(chunks: RetrievedChunk[]): number[] {
-  return [...new Set(chunks.map((chunk) => chunk.pageNumber))].sort((a, b) => a - b);
+function sourceLabel(type: SourceType, number?: number): string {
+  if (type === "document") return "Document";
+  return `${type === "slide" ? "Slide" : "Page"} ${number ?? 1}`;
+}
+
+function uniqueSources(chunks: RetrievedChunk[]): { type: SourceType; number?: number }[] {
+  const unique = new Map<string, { type: SourceType; number?: number }>();
+  for (const chunk of chunks) {
+    const source = { type: chunk.sourceType, number: chunk.sourceNumber };
+    unique.set(`${source.type}:${source.number ?? ""}`, source);
+  }
+  return [...unique.values()];
 }
 
 /** Chunk content is a string for text models; other shapes are flattened to their text parts. */
@@ -58,7 +69,7 @@ export async function POST(request: Request) {
     if (chunks.length === 0) {
       console.error(`No indexed chunks were returned for document ${documentId}`);
       return errorResponse(
-        "I couldn't retrieve this PDF's indexed text. Re-upload the PDF to index it again, then retry.",
+        "I couldn't retrieve this document's indexed text. Re-upload it to index it again, then retry.",
         503,
       );
     }
@@ -89,12 +100,12 @@ export async function POST(request: Request) {
       },
     });
 
-    // 7- Return the source pages with the answer (sent as a header, known before streaming starts)
+    // 7- Return page, slide, or document-level sources before streaming starts.
     return new Response(answerStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-store",
-        "X-Sources": JSON.stringify(uniquePages(chunks)),
+        "X-Sources": JSON.stringify(uniqueSources(chunks)),
       },
     });
   } catch (error) {

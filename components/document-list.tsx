@@ -1,9 +1,11 @@
 import { FileText, MessageSquare } from "lucide-react";
 import Link from "next/link";
+import { FileTypeIcon } from "@/components/file-type-icon";
 import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import type { DocumentDTO } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
+import { DOCUMENT_FORMATS, getDocumentSourceLabel } from "@/lib/document-formats";
 
 export function DocumentList({ documents }: { documents: DocumentDTO[] }) {
   return (
@@ -18,26 +20,25 @@ export function DocumentList({ documents }: { documents: DocumentDTO[] }) {
 
       {documents.length === 0 ? (
         <p className="border-t border-border px-5 py-8 text-center text-sm text-muted-foreground">
-          Your uploaded PDFs will appear here.
+          Your uploaded documents will appear here.
         </p>
       ) : (
         <ul className="divide-y divide-border px-4 sm:px-5">
           {documents.map((doc) => (
             <li key={doc.id} className="flex min-w-0 items-start gap-3 py-3.5">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              </span>
+              <FileTypeIcon fileName={doc.fileName} className="mt-0.5" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium" title={doc.fileName}>{doc.fileName}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <StatusBadge status={doc.status} />
                   <span className="text-xs text-muted-foreground">
                     {formatBytes(doc.fileSize)}
-                    {doc.status === "completed" && ` · ${doc.pageCount} ${doc.pageCount === 1 ? "page" : "pages"}`}
+                    {` · ${DOCUMENT_FORMATS[doc.fileType].extension}`}
+                    {doc.status === "completed" && doc.sourceType !== "document" && ` · ${getDocumentSourceLabel(doc.sourceType, doc.sourceCount)}`}
                   </span>
                 </div>
-                {doc.status === "failed" && (
-                  <p className="mt-1.5 line-clamp-2 text-xs text-red-700 dark:text-red-300">
+                {(doc.status === "failed" || doc.status === "cancelled") && (
+                  <p className={`mt-1.5 line-clamp-2 text-xs ${doc.status === "failed" ? "text-red-700 dark:text-red-300" : "text-muted-foreground"}`}>
                     {doc.errorMessage ?? "Processing failed. Try uploading the file again."}
                   </p>
                 )}

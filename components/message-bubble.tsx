@@ -6,7 +6,7 @@ export type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
-  sources: number[];
+  sources: string[];
   status: "streaming" | "done" | "error";
 };
 
@@ -46,12 +46,12 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       {showSources && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">Sources</span>
-          {message.sources.map((page) => (
+          {message.sources.map((source) => (
             <span
-              key={page}
+              key={source}
               className="inline-flex min-h-7 items-center rounded-full border border-input bg-card px-3 text-[13px]"
             >
-              Page {page}
+              {source}
             </span>
           ))}
         </div>

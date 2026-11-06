@@ -1,12 +1,16 @@
 import { model, models, Schema, type Model } from "mongoose";
+import type { DocumentFileType, SourceType } from "@/lib/document-formats";
 import type { DocumentStatus } from "@/lib/types";
 
 export type PdfDocumentAttrs = {
   fileName: string;
   fileSize: number;
   mimeType: string;
+  fileType: DocumentFileType;
   status: DocumentStatus;
   pageCount: number;
+  sourceType: SourceType;
+  sourceCount: number;
   chunkCount: number;
   errorMessage?: string;
   createdAt: Date;
@@ -18,13 +22,16 @@ const pdfDocumentSchema = new Schema<PdfDocumentAttrs>(
     fileName: { type: String, required: true, trim: true },
     fileSize: { type: Number, required: true },
     mimeType: { type: String, required: true },
+    fileType: { type: String, enum: ["pdf", "docx", "doc", "pptx", "ppt", "txt", "md"], default: "pdf" },
     status: {
       type: String,
-      enum: ["processing", "completed", "failed"],
+      enum: ["processing", "completed", "failed", "cancelled"],
       default: "processing",
       index: true,
     },
     pageCount: { type: Number, default: 0 },
+    sourceType: { type: String, enum: ["page", "slide", "document"], default: "page" },
+    sourceCount: { type: Number, default: 0 },
     chunkCount: { type: Number, default: 0 },
     errorMessage: { type: String },
     processedAt: { type: Date },

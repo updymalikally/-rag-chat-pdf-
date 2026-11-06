@@ -29,16 +29,17 @@ Treat the app as a calm reading and research tool. Keep documents and their stat
 
 ## Forms and interactions
 
-- Make the upload target clickable via a visible button and support drag/drop. Communicate PDF-only, maximum size, and one-at-a-time constraints before selection.
-- During transfer, show **Upload progress** with a determinate bar and percentage. During server-side extraction/indexing, show an indeterminate shadcn-style bar and an explicit processing label; do not imply a percentage when none is known.
+- Make the upload target clickable via a visible button and support drag/drop. Communicate supported formats, maximum size, and one-at-a-time constraints before selection.
+- Show a compact dark **Upload progress** section with a determinate shadcn-style bar, weighted percentage, filename, format, and current stage. Transfer percentage uses actual file bytes; extraction and chunking report their measured completion boundaries; Pinecone's integrated embedding/indexing reports successful chunk batches. Keep 100% for after the final MongoDB completion write.
+- Allow an active upload to be cancelled. Show failed and cancelled outcomes with distinct readable labels.
 - Disable duplicate upload/chat submissions while a request is active. Preserve clear recovery after failure.
 - In chat, Enter sends and Shift+Enter inserts a line. Keep focus in the composer after the response.
 - Distinguish a grounded refusal from a network/provider error. Show page sources only for an answer that uses document context.
 
 ## Loading, empty, and error states
 
-- Empty document list: explain that uploaded PDFs will appear there.
-- Empty chat: name the selected PDF and give one example question.
+- Empty document list: explain that uploaded documents will appear there.
+- Empty chat: name the selected document and give one example question.
 - Upload validation: concise error near the action and toast notification.
 - Upload processing: visible file name, file size, phase label, and progress indicator.
 - Chat waiting: subtle skeleton and “Generating answer…” label.
@@ -53,7 +54,7 @@ Treat the app as a calm reading and research tool. Keep documents and their stat
 ## Accessibility
 
 - Use landmarks, ordered headings, semantic buttons/links, visible keyboard focus, and meaningful labels.
-- Progress exposes `role="progressbar"`, min/max/current value and a descriptive label. Indeterminate progress omits the current numeric value.
+- Progress exposes `role="progressbar"`, min/max/current value and a descriptive label. Indeterminate progress omits the current numeric value. Source labels identify PDF pages, PowerPoint slides, or document-level references.
 - Announce upload/chat status changes politely; use alert semantics for failures.
 - Maintain WCAG AA contrast for text and controls; provide text labels for status colors and citation page numbers.
 - Do not communicate source attribution by color alone.

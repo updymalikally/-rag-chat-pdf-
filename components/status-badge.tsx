@@ -14,6 +14,10 @@ const STATUS_STYLES: Record<DocumentStatus, { label: string; className: string }
     label: "Failed",
     className: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
   },
+  cancelled: {
+    label: "Cancelled",
+    className: "bg-muted text-muted-foreground",
+  },
 };
 
 export function StatusBadge({ status }: { status: DocumentStatus }) {
