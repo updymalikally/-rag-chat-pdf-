@@ -64,7 +64,7 @@ npm run start      # Serve the production build
 
 The upload route validates the extension, MIME type, size, and file signature, creates a `processing` record in MongoDB, and uses a format-specific loader to extract text. PDF pages and PowerPoint slides are kept as separate sources; other supported formats retain document-level citations. All extracted text is split into chunks of about 1,000 characters with 200 characters of overlap and stored in Pinecone under a namespace matching the document ID. The MongoDB record is marked `completed` after indexing finishes. If processing fails, the app records a failure message and attempts to remove any partial Pinecone writes.
 
-When a question is submitted, the chat route checks the document status, retrieves up to five relevant chunks from that document's namespace, and sends those excerpts and recent conversation history to the configured model through OpenRouter. The answer is streamed to the browser; page, slide, or document citations are returned in the `X-Sources` response header.
+When a question is submitted, the chat route checks the document status, retrieves the configured number of relevant chunks from that document's namespace, and sends those excerpts and recent conversation history to the configured model through OpenRouter. The answer is streamed to the browser; citations identify PDF pages, PowerPoint slides, DOCX headings, or document-level TXT content in the `X-Sources` response header. Older indexed chunks without section metadata continue to receive page, slide, or document-level citations.
 
 ## Project structure
 

@@ -24,7 +24,11 @@ function parseSources(header: string | null): string[] {
       if (typeof source === "number") return [`Page ${source}`];
       if (typeof source !== "object" || source === null || !("type" in source)) return [];
       const type = source.type as SourceType;
-      if (type === "document") return ["Document"];
+      if (type === "document") {
+        return "sectionTitle" in source && typeof source.sectionTitle === "string" && source.sectionTitle.trim()
+          ? [`Section: ${source.sectionTitle}`]
+          : ["Document"];
+      }
       if ((type === "page" || type === "slide") && "number" in source && typeof source.number === "number") {
         return [`${type === "slide" ? "Slide" : "Page"} ${source.number}`];
       }

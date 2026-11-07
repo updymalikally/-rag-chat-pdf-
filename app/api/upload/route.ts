@@ -192,6 +192,8 @@ export async function POST(request: Request) {
           await storeChunks(
             documentId,
             file.name,
+            fileType,
+            document.createdAt,
             chunks,
             (completedChunks, totalChunks) => {
               report("embedding-indexing", completedChunks / totalChunks, { completedChunks, totalChunks });

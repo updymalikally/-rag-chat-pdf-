@@ -8,7 +8,7 @@ import { CHUNK_OVERLAP, CHUNK_SIZE } from "@/lib/constants";
 import { DOCUMENT_FORMATS, getDocumentFileType, type DocumentFileType, type SourceType } from "@/lib/document-formats";
 import type { TextChunk } from "@/lib/types";
 
-export type ExtractedSource = { sourceNumber?: number; text: string };
+export type ExtractedSource = { sourceNumber?: number; sectionTitle?: string; text: string };
 export type LoadedDocument = {
   documentId: string;
   fileName: string;
@@ -63,6 +63,81 @@ function joinText(parts: string[]): string {
   return cleanText(parts.filter((part) => part.trim()).join("\n"));
 }
 
+function extractHeadingText(paragraph: unknown): string {
+  if (typeof paragraph === "string") return cleanText(paragraph);
+  if (typeof paragraph !== "object" || paragraph === null) return "";
+  return joinText(collectOfficeText(paragraph));
+}
+
+function isDocxHeading(paragraph: unknown): boolean {
+  if (typeof paragraph !== "object" || paragraph === null) return false;
+  const properties = paragraph as { heading?: unknown; style?: unknown; outlineLevel?: unknown };
+  return properties.heading !== undefined
+    || typeof properties.outlineLevel === "number"
+    || (typeof properties.style === "string" && /^heading\s*\d/i.test(properties.style));
+}
+
+function extractDocxSources(sections: unknown): ExtractedSource[] {
+  const sources: ExtractedSource[] = [];
+  let currentHeading: string | undefined;
+  let currentParts: string[] = [];
+  const flush = () => {
+    const text = joinText(currentParts);
+    if (text) sources.push({ sectionTitle: currentHeading, text });
+    currentParts = [];
+  };
+
+  for (const section of Array.isArray(sections) ? sections : []) {
+    const children = typeof section === "object" && section !== null && "children" in section
+      ? (section as { children?: unknown }).children
+      : [];
+    for (const child of Array.isArray(children) ? children : []) {
+      if (typeof child === "object" && child !== null && "paragraph" in child) {
+        const paragraph = (child as { paragraph: unknown }).paragraph;
+        const text = extractHeadingText(paragraph);
+        if (isDocxHeading(paragraph) && text) {
+          flush();
+          currentHeading = text;
+          currentParts.push(text);
+        } else if (text) {
+          currentParts.push(text);
+        }
+      } else {
+        const text = joinText(collectOfficeText(child));
+        if (text) currentParts.push(text);
+      }
+    }
+  }
+  flush();
+  return sources;
+}
+
+function extractTextSections(text: string): ExtractedSource[] {
+  const sources: ExtractedSource[] = [];
+  let heading: string | undefined;
+  let parts: string[] = [];
+  const flush = () => {
+    const content = joinText(parts);
+    if (content) sources.push({ sectionTitle: heading, text: content });
+    parts = [];
+  };
+
+  for (const line of text.split("\n")) {
+    const markdownHeading = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    const numberedHeading = line.match(/^\s*\d+(?:\.\d+)*[.)]?\s+([^.!?]{2,80})\s*$/);
+    const nextHeading = markdownHeading?.[1]?.trim() ?? numberedHeading?.[2]?.trim();
+    if (nextHeading) {
+      flush();
+      heading = nextHeading;
+      parts.push(line.trim());
+    } else if (line.trim()) {
+      parts.push(line);
+    }
+  }
+  flush();
+  return sources.length ? sources : [{ text }];
+}
+
 function getMimeType(file: File, fileType: DocumentFileType): string {
   return file.type || DOCUMENT_FORMATS[fileType].mimeTypes[0];
 }
@@ -105,7 +180,7 @@ const pdfLoader: DocumentLoader = {
 const docxLoader: DocumentLoader = {
   async load(file, documentId) {
     const options = await parseDocx(new Uint8Array(await file.arrayBuffer()));
-    return createLoadedDocument(file, documentId, "docx", [{ text: joinText(collectOfficeText(options.sections)) }]);
+    return createLoadedDocument(file, documentId, "docx", extractDocxSources(options.sections));
   },
 };
 
@@ -147,8 +222,8 @@ const plainTextLoader: DocumentLoader = {
     const fileType = file.name.toLowerCase().endsWith(".md") ? "md" : "txt";
     const bytes = new Uint8Array(await file.arrayBuffer());
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    // Markdown is preserved as authored, including heading markers and list structure.
-    return createLoadedDocument(file, documentId, fileType, [{ text }]);
+    // Preserve authored text and use explicit Markdown/numbered headings where they exist.
+    return createLoadedDocument(file, documentId, fileType, extractTextSections(text));
   },
 };
 
@@ -195,7 +270,7 @@ export async function processDocument(
   onProgress?.("chunking", 0);
   const pieces = await splitter.createDocuments(
     textSources.map((source) => source.text),
-    textSources.map((source) => ({ sourceNumber: source.sourceNumber })),
+    textSources.map((source) => ({ sourceNumber: source.sourceNumber, sectionTitle: source.sectionTitle })),
   );
   onProgress?.("chunking", 1);
 
@@ -203,6 +278,7 @@ export async function processDocument(
     const sourceNumber = piece.metadata.sourceNumber;
     return {
       chunkIndex,
+      sectionTitle: typeof piece.metadata.sectionTitle === "string" ? piece.metadata.sectionTitle : undefined,
       sourceType: loaded.sourceType,
       sourceNumber: typeof sourceNumber === "number" ? sourceNumber : undefined,
       pageNumber: loaded.sourceType === "page" && typeof sourceNumber === "number" ? sourceNumber : undefined,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, FileText, RotateCw, Upload, X } from "lucide-react";
+import { Check, CircleAlert, FileText, LoaderCircle, RotateCw, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
@@ -122,6 +122,7 @@ function checkFile(file: File): string | null {
 
 type UploadState =
   | { phase: "idle" }
+  | { phase: "deleting"; fileName: string }
   | { phase: "working"; fileName: string; fileSize: number; percent: number; stage: UploadStage }
   | { phase: "completed"; fileName: string; fileSize: number }
   | { phase: "failed"; fileName: string; fileSize: number; percent: number; message: string; errorCode: string }
@@ -142,6 +143,7 @@ export function UploadDropzone() {
   const lastFileRef = useRef<File | null>(null);
   const cancelRequested = useRef(false);
   const [state, setState] = useState<UploadState>({ phase: "idle" });
+  const uploadStateBeforeDelete = useRef<UploadState>({ phase: "idle" });
   const [isDragging, setIsDragging] = useState(false);
   const isBusy = state.phase === "working";
 
@@ -153,6 +155,35 @@ export function UploadDropzone() {
     window.addEventListener("rag:open-upload", openPicker);
     return () => window.removeEventListener("rag:open-upload", openPicker);
   }, []);
+
+  useEffect(() => {
+    const onDeleteStart = (event: Event) => {
+      const fileName = (event as CustomEvent<{ fileName?: string }>).detail?.fileName;
+      if (!fileName) return;
+      uploadStateBeforeDelete.current = state;
+      setState({ phase: "deleting", fileName });
+    };
+    const onDeleteComplete = (event: Event) => {
+      const fileName = (event as CustomEvent<{ fileName?: string }>).detail?.fileName;
+      setState((current) => {
+        if (current.phase !== "deleting" || current.fileName !== fileName) return current;
+        const previous = uploadStateBeforeDelete.current;
+        return previous.phase === "completed" && previous.fileName === fileName ? { phase: "idle" } : previous;
+      });
+    };
+    const onDeleteFailed = (event: Event) => {
+      const fileName = (event as CustomEvent<{ fileName?: string }>).detail?.fileName;
+      setState((current) => current.phase === "deleting" && current.fileName === fileName ? uploadStateBeforeDelete.current : current);
+    };
+    window.addEventListener("rag:document-delete-start", onDeleteStart);
+    window.addEventListener("rag:document-delete-complete", onDeleteComplete);
+    window.addEventListener("rag:document-delete-failed", onDeleteFailed);
+    return () => {
+      window.removeEventListener("rag:document-delete-start", onDeleteStart);
+      window.removeEventListener("rag:document-delete-complete", onDeleteComplete);
+      window.removeEventListener("rag:document-delete-failed", onDeleteFailed);
+    };
+  }, [state]);
 
   async function uploadFile(file: File) {
     const problem = checkFile(file);
@@ -281,6 +312,23 @@ export function UploadDropzone() {
 
       {state.phase !== "idle" && (
         <div aria-live="polite" className="flex flex-col gap-3">
+          {state.phase === "deleting" && (
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-4 text-white" role="status">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <FileTypeIcon fileName={state.fileName} size="sm" />
+                  <span className="text-sm font-semibold">Deleting document</span>
+                </div>
+                <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-slate-300" aria-hidden="true" />
+              </div>
+              <Progress label="Document deletion in progress" className="h-1.5 bg-slate-700" indicatorClassName="bg-sky-400" />
+              <div className="flex min-w-0 items-center justify-between gap-3 text-xs text-slate-300">
+                <span className="min-w-0 truncate" title={state.fileName}>{state.fileName}</span>
+                <span className="shrink-0">Removing document and indexed content…</span>
+              </div>
+            </div>
+          )}
+
           {(state.phase === "working" || state.phase === "completed" || state.phase === "failed") && (
             <div
               className={cn(

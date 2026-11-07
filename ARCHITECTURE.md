@@ -15,11 +15,11 @@ This stack is already present. Keep it for the MVP; do not add a new service or 
 
 1. Browser sends one supported document's bytes to `POST /api/upload` using XMLHttpRequest for byte-accurate transfer progress. Multipart form uploads remain supported for API compatibility.
 2. Server validates the filename extension, MIME type, size, UTF-8 text validity, and PDF/Office file signature; creates a MongoDB document in `processing` state.
-3. The upload route chooses a format-specific loader. PDF pages and PowerPoint slides become individually numbered sources; Word, TXT, and Markdown become document-level sources. One shared splitter creates chunks (1,000 characters with 200-character overlap).
-4. Server upserts chunk records to a Pinecone namespace named by the MongoDB document ID. Pinecone performs integrated embeddings, so progress is reported by successfully stored batch/chunk counts for this combined stage.
+3. The upload route chooses a format-specific loader. PDF pages and PowerPoint slides become individually numbered sources; DOCX headings and explicit Markdown/numbered text headings are retained as optional section titles without inventing page numbers. One shared splitter creates chunks (1,000 characters with 200-character overlap) and carries source/section metadata forward.
+4. Server upserts chunk records to a Pinecone namespace named by the MongoDB document ID. Each new chunk stores the filename/title, file type, MongoDB upload timestamp, source type/number, optional section title, document ID, and chunk index. Pinecone performs integrated embeddings, so progress is reported by successfully stored batch/chunk counts for this combined stage.
 5. On success, MongoDB is updated with format, source/chunk counts, and `completed`; on failure or cancellation, partial vectors are deleted where possible and the document is marked accordingly.
 6. The upload stream reports weighted server-processing progress; 100% is sent only after the MongoDB completion update succeeds. Browser then refreshes `GET /api/documents` to render the list. A completed document opens `/chat/[documentId]`.
-7. Chat API verifies document existence/status, retrieves up to five relevant chunks from that document namespace, sends context plus bounded history to OpenRouter, and streams plain text with page, slide, or document citations in `X-Sources`.
+7. Chat API verifies document existence/status, retrieves the configured number of relevant chunks from that document namespace, sends context plus bounded history to OpenRouter, and streams plain text with page, slide, section, or document citations in `X-Sources`. Older chunks without new fields remain readable and use the MongoDB document's source type as a fallback.
 
 ## Boundaries and module map
 
@@ -46,7 +46,7 @@ Browser components call same-origin routes only. `lib/mongodb.ts`, `lib/pinecone
 
 ## Authentication and authorization
 
-No authentication or ownership checks exist. This is a single-user/trusted-environment MVP only. A public multi-user deployment is blocked until an authentication provider, session model, per-user ownership field, and server-side document authorization are approved. Do not bolt on client-only route protection.
+No authentication or ownership checks exist. This is a single-user/trusted-environment MVP only. No `userId` chunk metadata is written until an authentication provider, session model, per-user ownership field, and server-side document authorization are implemented. A public multi-user deployment is blocked until those controls are approved. Do not bolt on client-only route protection.
 
 ## API and errors
 
@@ -62,7 +62,7 @@ See `.env.example`. Required values are `MONGODB_URI`, `PINECONE_API_KEY`, `PINE
 - Upload processing is synchronous; larger documents may exceed host limits. Background jobs are a future option only if real workload requires them.
 - Limit input size and validate format signatures; scanned PDFs are unsupported without OCR. Password-protected and malformed files fail processing with a safe message.
 - Use a dedicated Pinecone namespace per document and server-side document status checks.
-- There is currently no rate limiting, auth, document deletion UI, or persistent chat history; these are deployment risks for public use.
+- There is currently no rate limiting, authentication, or persistent chat history; these are deployment risks for public use.
 
 ## Testing and deployment approach
 

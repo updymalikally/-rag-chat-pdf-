@@ -21,19 +21,20 @@ function errorResponse(message: string, status: number) {
 }
 
 function buildContext(chunks: RetrievedChunk[]): string {
-  return chunks.map((chunk) => `[${sourceLabel(chunk.sourceType, chunk.sourceNumber)}]\n${chunk.text}`).join("\n\n---\n\n");
+  return chunks.map((chunk) => `[${sourceLabel(chunk.sourceType, chunk.sourceNumber, chunk.sectionTitle)}]\n${chunk.text}`).join("\n\n---\n\n");
 }
 
-function sourceLabel(type: SourceType, number?: number): string {
+function sourceLabel(type: SourceType, number?: number, sectionTitle?: string): string {
+  if (type === "document" && sectionTitle) return `Section: ${sectionTitle}`;
   if (type === "document") return "Document";
-  return `${type === "slide" ? "Slide" : "Page"} ${number ?? 1}`;
+  return number === undefined ? (type === "slide" ? "Slide" : "Page") : `${type === "slide" ? "Slide" : "Page"} ${number}`;
 }
 
-function uniqueSources(chunks: RetrievedChunk[]): { type: SourceType; number?: number }[] {
-  const unique = new Map<string, { type: SourceType; number?: number }>();
+function uniqueSources(chunks: RetrievedChunk[]): { type: SourceType; number?: number; sectionTitle?: string }[] {
+  const unique = new Map<string, { type: SourceType; number?: number; sectionTitle?: string }>();
   for (const chunk of chunks) {
-    const source = { type: chunk.sourceType, number: chunk.sourceNumber };
-    unique.set(`${source.type}:${source.number ?? ""}`, source);
+    const source = { type: chunk.sourceType, number: chunk.sourceNumber, sectionTitle: chunk.sectionTitle };
+    unique.set(`${source.type}:${source.number ?? ""}:${source.sectionTitle ?? ""}`, source);
   }
   return [...unique.values()];
 }
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     }
 
     // 3- Search Pinecone's integrated embedding field for the closest chunks.
-    const chunks = await searchChunks(documentId, question);
+    const chunks = await searchChunks(documentId, question, document.sourceType);
     if (chunks.length === 0) {
       console.error(`No indexed chunks were returned for document ${documentId}`);
       return errorResponse(

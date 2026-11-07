@@ -27,16 +27,23 @@ export function DeleteDocumentButton({ documentId, fileName, disabled = false }:
     if (disabled || isDeleting) return;
 
     setIsDeleting(true);
+    window.dispatchEvent(new CustomEvent("rag:document-delete-start", { detail: { fileName } }));
+    let deleted = false;
     try {
       const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not delete this document.");
+      deleted = true;
       setIsDialogOpen(false);
-      toast.success("Document and indexed text deleted.");
+      window.dispatchEvent(new CustomEvent("rag:document-delete-complete", { detail: { fileName } }));
+      toast.success("Document removed from your library.");
       router.refresh();
     } catch (error) {
+      window.dispatchEvent(new CustomEvent("rag:document-delete-failed", { detail: { fileName } }));
       toast.error(error instanceof Error ? error.message : "Could not delete this document.");
       setIsDeleting(false);
+    } finally {
+      if (!deleted) setIsDeleting(false);
     }
   }
 

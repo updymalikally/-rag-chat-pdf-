@@ -37,12 +37,17 @@ Each text chunk is upserted with `_id = <mongoDocumentId>-<chunkIndex>` in names
 | `chunk_text` | String | Extracted text; configured for integrated embedding and semantic search. |
 | `title` | String | Original filename. |
 | `documentId` | String | Mongo document ID, retained as a field. |
+| `fileType` | String | Original format (`pdf`, `docx`, `pptx`, `txt`, and other formats already supported by the app). |
+| `uploadDate` | String | MongoDB `createdAt` timestamp in ISO 8601 form. |
 | `pageNumber` | Number | Legacy-compatible page number (zero for non-PDF chunks). |
 | `sourceType` | String | `page`, `slide`, or `document`. |
 | `sourceNumber` | Number | 1-based page or slide number when available. |
+| `sectionTitle` | String | Extracted Word heading or explicit Markdown/numbered text heading, when present. |
 | `chunkIndex` | Number | Zero-based chunk sequence for the document. |
 
-Chunks are generated within each PDF page or PowerPoint slide using a 1,000-character maximum and 200-character overlap. Word, text, and Markdown files use document-level source metadata. The namespace itself isolates each document's search corpus.
+Chunks are generated within each PDF page or PowerPoint slide using a 1,000-character maximum and 200-character overlap. Word, text, and Markdown chunks use document-level source metadata; section headings are optional additional citation context and do not imply fixed page numbers. DOCX section labels are taken from heading properties/styles. TXT/Markdown labels are derived only from explicit Markdown or numbered headings. The namespace itself isolates each document's search corpus. The current application has no authentication, so no `userId` is stored; add it only alongside server-enforced authentication and ownership checks.
+
+New metadata is written for uploads processed after this change. Existing Pinecone chunks are not deleted or rewritten and remain retrievable; legacy chunks may lack `fileType`, `uploadDate`, and `sectionTitle`, so retrieval falls back to the MongoDB document's source type and displays a document-level citation. Re-uploading the document creates a new MongoDB ID and namespace. A future backfill would require retained source files or an explicit safe re-indexing workflow, because original binaries are not stored.
 
 ## Relationships
 

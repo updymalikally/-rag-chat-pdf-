@@ -33,11 +33,11 @@ Lists all document metadata, newest first.
 
 ## `DELETE /api/documents/{documentId}`
 
-Deletes the document's dedicated Pinecone namespace contents and then removes its MongoDB document record. Processing documents cannot be deleted until processing finishes. The API validates the MongoDB ObjectId and keeps the MongoDB record if Pinecone cleanup fails, so the operation can be retried.
+Deletes the document's dedicated Pinecone namespace contents and removes its MongoDB document record only after a verification search confirms that namespace is empty. Processing documents cannot be deleted until processing finishes. The API validates the MongoDB ObjectId and keeps the MongoDB record if Pinecone cleanup fails or is still in progress, so the operation can be retried. If the MongoDB row was removed by an earlier request, repeating the same DELETE retries cleanup for that namespace.
 
-**Success `200`:** `{ "success": true, "documentId": "<mongo-object-id>" }`.
+**Success `200`:** `{ "success": true, "documentId": "<mongo-object-id>", "alreadyRemovedFromMongo": false }`. The flag is `true` when this request only cleans up a namespace whose MongoDB row is already gone.
 
-**Errors:** `400` invalid ID; `404` document not found; `409` document is still processing; `500` Pinecone or database cleanup failed. Deletion from Pinecone is asynchronous after the service accepts the delete request.
+**Errors:** `400` invalid ID; `409` document is still processing; `503` Pinecone accepted the delete but the namespace still returns records during the bounded verification window (MongoDB row is retained); `500` Pinecone or database cleanup failed. Pinecone applies deletes asynchronously, so retry the same request after a few seconds if it returns `503`.
 
 ## `POST /api/upload`
 
@@ -79,7 +79,9 @@ Accepts JSON. `documentId` must be a valid Mongo ObjectId. `question` is trimmed
 }
 ```
 
-**Success `200`:** UTF-8 `text/plain` streamed answer. Headers include `Cache-Control: no-store` and `X-Sources`, a JSON array of source objects such as `[{"type":"page","number":1},{"type":"slide","number":3},{"type":"document"}]`. The client also accepts the older numeric page array for compatibility. If the context does not contain an answer, the model returns the configured refusal sentence and the client hides source badges.
+**Success `200`:** UTF-8 `text/plain` streamed answer. Headers include `Cache-Control: no-store` and `X-Sources`, a JSON array of source objects such as `[{"type":"page","number":5},{"type":"slide","number":3},{"type":"document","sectionTitle":"Cybercrime"},{"type":"document"}]`. `sectionTitle` is optional; older chunks without metadata continue to return page, slide, or document-level sources. The client also accepts the older numeric page array for compatibility. If the context does not contain an answer, the model returns the configured refusal sentence and the client hides source badges.
+
+New Pinecone chunks store `fileType`, `uploadDate` (ISO timestamp from MongoDB `createdAt`), optional `sectionTitle`, and the existing `documentId`, `title`, `sourceType`, `sourceNumber`, `pageNumber`, and `chunkIndex`. There is no `userId` because this application has no authentication or ownership model. Existing chunks are not rewritten; missing metadata uses the MongoDB document's source type as a citation fallback. Since original files are not retained, old chunks receive the new fields only if a user uploads the source again (which creates a new document/namespace) or a separately designed re-indexing process is run.
 
 **Errors:** `400` invalid request; `404` document not found; `409` document is not completed; `503` no indexed chunks were returned; `500` retrieval/model/stream setup failure. Error response shape is `{ "error": "Could not answer that question. Try again." }` or a specific validation/status message.
 

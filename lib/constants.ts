@@ -6,7 +6,7 @@ export { ACCEPTED_MIME_TYPE, ACCEPTED_UPLOAD_TYPES } from "@/lib/document-format
 export const CHUNK_SIZE = 1000;
 export const CHUNK_OVERLAP = 200;
 export const CHAT_MODEL = "gpt-4o-mini";
-export const RETRIEVAL_TOP_K = 5;
+export const RETRIEVAL_TOP_K = 8;
 export const MAX_HISTORY_MESSAGES = 6;
 
 // The model is told to reply with exactly this sentence when the context has no answer.

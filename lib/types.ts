@@ -28,6 +28,9 @@ export type HistoryMessage = {
 export type ChunkMetadata = {
   documentId: string;
   fileName: string;
+  fileType?: DocumentFileType;
+  uploadDate?: string;
+  sectionTitle?: string;
   pageNumber?: number;
   sourceType?: SourceType;
   sourceNumber?: number;
@@ -37,6 +40,7 @@ export type ChunkMetadata = {
 
 export type TextChunk = {
   chunkIndex: number;
+  sectionTitle?: string;
   pageNumber?: number;
   sourceType: SourceType;
   sourceNumber?: number;

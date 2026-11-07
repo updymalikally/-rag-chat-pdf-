@@ -1,19 +1,30 @@
 import { RETRIEVAL_TOP_K } from "@/lib/constants";
 import { requireEnv } from "@/lib/env";
 import type { TextChunk } from "@/lib/types";
-import type { SourceType } from "@/lib/document-formats";
+import type { DocumentFileType, SourceType } from "@/lib/document-formats";
 
 const PINECONE_API_VERSION = "2026-07";
 const PINECONE_EMBED_BATCH_SIZE = 96;
+const DELETE_VERIFY_ATTEMPTS = 8;
+const DELETE_VERIFY_INTERVAL_MS = 600;
+
+export class PineconeNamespaceDeletePendingError extends Error {}
 
 type PineconeIndexDescription = { host?: string };
 type PineconeErrorBody = { error?: { message?: string }; message?: string };
 type SearchHit = {
-  fields?: { chunk_text?: unknown; pageNumber?: unknown; sourceType?: unknown; sourceNumber?: unknown };
+  fields?: Record<string, unknown>;
+  _id?: unknown;
   chunk_text?: unknown;
   pageNumber?: unknown;
   sourceType?: unknown;
   sourceNumber?: unknown;
+  sectionTitle?: unknown;
+  fileType?: unknown;
+  uploadDate?: unknown;
+  documentId?: unknown;
+  title?: unknown;
+  chunkIndex?: unknown;
 };
 type SearchResponse = { matches?: SearchHit[] };
 
@@ -81,6 +92,8 @@ async function documentsRequest<T>(
 export async function storeChunks(
   documentId: string,
   fileName: string,
+  fileType: DocumentFileType,
+  uploadDate: Date,
   chunks: TextChunk[],
   onBatchStored?: (completedChunks: number, totalChunks: number) => void,
   signal?: AbortSignal,
@@ -93,9 +106,12 @@ export async function storeChunks(
       chunk_text: chunk.text,
       title: fileName,
       documentId,
+      fileType,
+      uploadDate: uploadDate.toISOString(),
       pageNumber: chunk.pageNumber ?? chunk.sourceNumber ?? 0,
       sourceType: chunk.sourceType,
       sourceNumber: chunk.sourceNumber,
+      sectionTitle: chunk.sectionTitle,
       chunkIndex: chunk.chunkIndex,
     }));
 
@@ -105,26 +121,61 @@ export async function storeChunks(
   }
 }
 
-export type RetrievedChunk = { sourceType: SourceType; sourceNumber?: number; pageNumber?: number; text: string };
+export type RetrievedChunk = {
+  documentId?: string;
+  title?: string;
+  fileType?: DocumentFileType;
+  uploadDate?: string;
+  chunkIndex?: number;
+  sectionTitle?: string;
+  sourceType: SourceType;
+  sourceNumber?: number;
+  pageNumber?: number;
+  text: string;
+};
 
-export async function searchChunks(documentId: string, question: string): Promise<RetrievedChunk[]> {
+export async function searchChunks(
+  documentId: string,
+  question: string,
+  fallbackSourceType: SourceType = "document",
+): Promise<RetrievedChunk[]> {
   const result = await documentsRequest<SearchResponse>(documentId, "search", {
     score_by: [{ type: "embed", fields: ["chunk_text"], query: question }],
     top_k: RETRIEVAL_TOP_K,
-    include_fields: ["chunk_text", "pageNumber", "sourceType", "sourceNumber"],
+    include_fields: [
+      "chunk_text", "documentId", "title", "fileType", "uploadDate", "chunkIndex", "sectionTitle",
+      "pageNumber", "sourceType", "sourceNumber",
+    ],
   });
 
   return (result.matches ?? []).flatMap((match) => {
     // Documents API matches expose document fields directly; accept nested fields too
     // so the parser remains compatible with the Records API hit shape.
     const fields = match.fields ?? match;
+    if (typeof fields.documentId === "string" && fields.documentId !== documentId) return [];
     const text = typeof fields.chunk_text === "string" ? fields.chunk_text : "";
-    const pageNumber = typeof fields.pageNumber === "number" ? fields.pageNumber : undefined;
+    const rawPageNumber = typeof fields.pageNumber === "number" ? fields.pageNumber : undefined;
+    const pageNumber = rawPageNumber !== undefined && rawPageNumber > 0 ? rawPageNumber : undefined;
     const sourceType = fields.sourceType === "slide" || fields.sourceType === "document" || fields.sourceType === "page"
       ? fields.sourceType
-      : "page";
-    const sourceNumber = typeof fields.sourceNumber === "number" ? fields.sourceNumber : pageNumber;
-    return text ? [{ sourceType, sourceNumber, pageNumber, text }] : [];
+      : fallbackSourceType;
+    const rawSourceNumber = typeof fields.sourceNumber === "number" ? fields.sourceNumber : pageNumber;
+    const sourceNumber = rawSourceNumber !== undefined && rawSourceNumber > 0 ? rawSourceNumber : undefined;
+    const fileType = ["pdf", "docx", "doc", "pptx", "ppt", "txt", "md"].includes(String(fields.fileType))
+      ? fields.fileType as DocumentFileType
+      : undefined;
+    return text ? [{
+      documentId: typeof fields.documentId === "string" ? fields.documentId : undefined,
+      title: typeof fields.title === "string" ? fields.title : undefined,
+      fileType,
+      uploadDate: typeof fields.uploadDate === "string" ? fields.uploadDate : undefined,
+      chunkIndex: typeof fields.chunkIndex === "number" ? fields.chunkIndex : undefined,
+      sectionTitle: typeof fields.sectionTitle === "string" && fields.sectionTitle.trim() ? fields.sectionTitle : undefined,
+      sourceType,
+      sourceNumber,
+      pageNumber,
+      text,
+    }] : [];
   });
 }
 
@@ -136,4 +187,18 @@ export async function deleteDocumentChunks(documentId: string): Promise<void> {
 /** Each document owns its Pinecone namespace, so deleting the namespace contents removes every chunk. */
 export async function deleteDocumentNamespace(documentId: string): Promise<void> {
   await documentsRequest(documentId, "delete", { delete_all: true });
+
+  // Pinecone accepts namespace deletion asynchronously. Confirm the namespace no
+  // longer returns documents before the caller removes the MongoDB source record.
+  for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, DELETE_VERIFY_INTERVAL_MS));
+    const result = await documentsRequest<SearchResponse>(documentId, "search", {
+      score_by: [{ type: "embed", fields: ["chunk_text"], query: "namespace deletion verification" }],
+      top_k: 1,
+      include_fields: ["documentId"],
+    });
+    if ((result.matches?.length ?? 0) === 0) return;
+  }
+
+  throw new PineconeNamespaceDeletePendingError("Pinecone has not finished deleting this namespace yet.");
 }

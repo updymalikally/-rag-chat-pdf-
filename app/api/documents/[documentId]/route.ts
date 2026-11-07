@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { deleteDocumentNamespace } from "@/lib/pinecone";
+import { deleteDocumentNamespace, PineconeNamespaceDeletePendingError } from "@/lib/pinecone";
 import { documentIdSchema } from "@/lib/validations";
 import { PdfDocument } from "@/models/Document";
 
@@ -18,22 +18,27 @@ export async function DELETE(_request: Request, { params }: DeleteDocumentContex
   try {
     await connectDB();
     const document = await PdfDocument.findById(documentId).select("status").lean();
-    if (!document) return NextResponse.json({ error: "Document not found." }, { status: 404 });
-    if (document.status === "processing") {
+    if (document?.status === "processing") {
       return NextResponse.json(
         { error: "Wait for document processing to finish before deleting it." },
         { status: 409 },
       );
     }
 
-    // Remove the document's dedicated Pinecone namespace before deleting its MongoDB record.
-    // If either service fails, retain the MongoDB row so the user can retry the cleanup.
+    // Verify Pinecone has finished removing this namespace before deleting the MongoDB row.
+    // If the row was removed by an older request, this also lets an idempotent retry clean up
+    // the orphaned namespace by document ID.
     await deleteDocumentNamespace(documentId);
-    const deleted = await PdfDocument.findByIdAndDelete(documentId).select("_id").lean();
-    if (!deleted) return NextResponse.json({ error: "Document was already deleted." }, { status: 404 });
+    if (document) await PdfDocument.findByIdAndDelete(documentId).select("_id").lean();
 
-    return NextResponse.json({ success: true, documentId });
+    return NextResponse.json({ success: true, documentId, alreadyRemovedFromMongo: !document });
   } catch (error) {
+    if (error instanceof PineconeNamespaceDeletePendingError) {
+      return NextResponse.json(
+        { error: "Pinecone is still removing this document's indexed content. The document is still available for retry; wait a few seconds and try again." },
+        { status: 503 },
+      );
+    }
     console.error(`Could not delete document ${documentId}`, error);
     return NextResponse.json(
       { error: "Could not completely delete this document. Check the database and Pinecone connection, then try again." },
