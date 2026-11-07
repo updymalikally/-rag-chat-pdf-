@@ -31,6 +31,14 @@ Lists all document metadata, newest first.
 
 **Errors:** `500 { "error": "Could not load your documents." }`.
 
+## `DELETE /api/documents/{documentId}`
+
+Deletes the document's dedicated Pinecone namespace contents and then removes its MongoDB document record. Processing documents cannot be deleted until processing finishes. The API validates the MongoDB ObjectId and keeps the MongoDB record if Pinecone cleanup fails, so the operation can be retried.
+
+**Success `200`:** `{ "success": true, "documentId": "<mongo-object-id>" }`.
+
+**Errors:** `400` invalid ID; `404` document not found; `409` document is still processing; `500` Pinecone or database cleanup failed. Deletion from Pinecone is asynchronous after the service accepts the delete request.
+
 ## `POST /api/upload`
 
 Accepts PDF (`.pdf`), Word (`.docx`, `.doc`), PowerPoint (`.pptx`, `.ppt`), plain text (`.txt`), and Markdown (`.md`) files. Browser uploads use a raw body with the filename in `X-File-Name` and the file MIME type in `Content-Type`; existing clients may send `multipart/form-data`, field `file`. Maximum 10 MB. The server validates extension, MIME type, nonempty content, PDF/Office signatures, and UTF-8 for text files. ZIP-backed DOCX/PPTX archives are also validated by their format parser.

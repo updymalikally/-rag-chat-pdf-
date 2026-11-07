@@ -1,6 +1,7 @@
 import { FileText, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { FileTypeIcon } from "@/components/file-type-icon";
+import { DeleteDocumentButton } from "@/components/delete-document-button";
 import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import type { DocumentDTO } from "@/lib/types";
@@ -43,20 +44,23 @@ export function DocumentList({ documents }: { documents: DocumentDTO[] }) {
                   </p>
                 )}
               </div>
-              {doc.status === "completed" ? (
-                <Link
-                  href={`/chat/${doc.id}`}
-                  className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-primary transition-colors hover:bg-primary/10"
-                  aria-label={`Chat with ${doc.fileName}`}
-                  title="Open chat"
-                >
-                  <MessageSquare className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              ) : (
-                <span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground" aria-hidden="true">
-                  <MessageSquare className="h-4 w-4" />
-                </span>
-              )}
+              <div className="ml-1 flex shrink-0 items-center gap-1">
+                {doc.status === "completed" ? (
+                  <Link
+                    href={`/chat/${doc.id}`}
+                    className="mt-1 flex h-8 w-8 items-center justify-center rounded-md text-primary transition-colors hover:bg-primary/10"
+                    aria-label={`Chat with ${doc.fileName}`}
+                    title="Open chat"
+                  >
+                    <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                ) : (
+                  <span className="mt-1 flex h-8 w-8 items-center justify-center text-muted-foreground" aria-hidden="true">
+                    <MessageSquare className="h-4 w-4" />
+                  </span>
+                )}
+                <DeleteDocumentButton documentId={doc.id} fileName={doc.fileName} disabled={doc.status === "processing"} />
+              </div>
             </li>
           ))}
         </ul>

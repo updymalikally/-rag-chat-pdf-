@@ -8,6 +8,7 @@ A small web app for asking questions about documents. Upload a supported file, w
 - Extracts PDF pages and PowerPoint slides separately; Word, text, and Markdown files use document-level sources.
 - Sends every format through the same text chunking and Pinecone indexing pipeline.
 - Shows document processing status and lists completed uploads.
+- Lets the user delete a document and its indexed Pinecone content from the document list.
 - Streams answers grounded in the selected document and displays page, slide, or document citations.
 - Supports light and dark themes.
 

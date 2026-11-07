@@ -132,3 +132,8 @@ export async function searchChunks(documentId: string, question: string): Promis
 export async function deleteDocumentChunks(documentId: string): Promise<void> {
   await documentsRequest(documentId, "delete", { filter: { documentId: { $eq: documentId } } });
 }
+
+/** Each document owns its Pinecone namespace, so deleting the namespace contents removes every chunk. */
+export async function deleteDocumentNamespace(documentId: string): Promise<void> {
+  await documentsRequest(documentId, "delete", { delete_all: true });
+}
